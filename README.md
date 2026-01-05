@@ -20,30 +20,36 @@
 - **💾 历史记录管理**：完整的任务历史追踪，支持失败任务重试与本地缓存恢复。
 - **🔌 灵活扩展**：模块化 Provider 设计，可轻松接入其他主流 AI 模型。
 
-## 🛠️ 界面布局
+## 🏗️ 技术架构
 
-系统采用经典的**三栏式响应式布局**：
-1. **左侧配置面板**：实时调整模型参数（比例、分辨率、生成数量、参考图上传）。
-2. **中间生成区域**：展示当前生成任务的实时状态、倒计时、进度条及生成结果。
-3. **右侧历史面板**：持久化存储历史生成记录，支持瀑布流预览、大图查看。
+### 核心流程图
+```mermaid
+graph TD
+    A[前端 React + Zustand] -->|WebSocket/Polling| B[后端 API 接口]
+    B -->|Task Dispatch| C[Worker 线程池]
+    C -->|API Request| D[Google Gemini Provider]
+    D -->|Process| E[Imagen 3.0 Model]
+    E -->|Image Data| D
+    D -->|Save File| F[本地存储/SQLite]
+    F -->|Notify| A
+```
 
-## 💻 技术实现
+### 关键设计
+- **任务调度系统**：采用并发安全的 Worker 池，有效平衡服务器负载，防止大批量请求导致的系统崩溃。
+- **多级缓存策略**：前端采用 Zustand 内存缓存，后端采用 SQLite 持久化存储，确保任务状态在刷新后仍能恢复。
+- **响应式 UI**：基于 Tailwind CSS 构建的三栏式布局，完美适配不同尺寸的显示器。
 
-### 后端 (Backend)
-- **Go v1.24.3**: 高性能核心逻辑处理
-- **Gin v1.11.0**: API 路由与中间件管理
-- **Google GenAI SDK v1.40.0**: Gemini 模型深度对接
-- **SQLite + GORM v1.25.12**: 任务与图片元数据持久化
-- **Viper v1.21.0**: 多环境配置平滑切换
-- **Worker Pool**: 异步任务并发调度系统
+## 💻 技术栈
 
-### 前端 (Frontend)
-- **React v18.3.1**: 现代 UI 组件化开发框架
-- **Vite v6.0.7**: 毫秒级热更新构建工具
-- **Zustand v5.0.2**: 响应式轻量级状态管理
-- **Tailwind CSS v3.4.17**: 原子化响应式样式系统
-- **TypeScript v5.6.3**: 全链路类型安全保障
-- **WebSocket**: 任务进度实时推送
+| 模块 | 技术 | 描述 |
+| :--- | :--- | :--- |
+| **后端** | Go v1.24.3 | 高性能并发处理 |
+| **API** | Gin v1.11.0 | 灵活的 RESTful 路由 |
+| **模型** | Google GenAI SDK | 深度对接 Imagen 3.0 |
+| **数据库** | SQLite + GORM | 轻量级 ORM 数据存储 |
+| **前端** | React v18.3.1 | 组件化界面开发 |
+| **状态** | Zustand v5.0.2 | 极简响应式状态流 |
+| **样式** | Tailwind CSS | 原子化现代样式系统 |
 
 ## 🚀 快速启动
 
@@ -55,8 +61,7 @@
 ### 2. 后端配置
 ```bash
 cd backend
-# 编辑配置文件
-# 在 configs/config.yaml 中填入您的 providers.gemini.api_key
+# 编辑配置文件 configs/config.yaml，填入 providers.gemini.api_key
 go run cmd/server/main.go
 ```
 
@@ -69,35 +74,26 @@ npm run dev
 
 ## ⚙️ 核心配置项
 
-### 后端 (`backend/configs/config.yaml`)
-
 | 配置项 | 描述 | 示例 |
 | :--- | :--- | :--- |
-| `server.port` | 服务监听端口 | `8080` |
-| `storage.local_dir` | 图片存储路径 | `storage/local` |
 | `providers.gemini.api_key` | Gemini API 密钥 | `AIzaSy...` |
+| `storage.local_dir` | 图片存储路径 | `storage/local` |
+| `VITE_API_URL` | 前端 API 基础路径 | `http://localhost:8080/api/v1` |
 
-### 前端 (`frontend/.env.development`)
+## �️ 功能路线图 (Roadmap)
 
-| 配置项 | 描述 | 示例 |
-| :--- | :--- | :--- |
-| `VITE_API_URL` | 后端 API 地址 | `http://localhost:8080/api/v1` |
+- [x] **v1.0.0**: 核心功能发布，支持 4K 文生图与批量生成。
+- [x] **v1.1.0**: 深度集成图生图（Image-to-Image）逻辑。
+- [ ] **v1.2.0**: 支持多模型对比生成模式。
+- [ ] **v1.3.0**: 增加图片在线编辑（Canvas）与局部重绘功能。
+- [ ] **v2.0.0**: 接入更多主流 Provider（如 Midjourney, Flux）。
 
-## 📂 项目结构
-```text
-.
-├── backend/               # Go 后端核心代码
-│   ├── cmd/               # 程序入口 (main.go)
-│   ├── configs/           # 配置文件 (YAML)
-│   ├── internal/          # 内部业务逻辑封装
-│   └── storage/           # 本地持久化存储 (DB & Images)
-└── frontend/              # React 前端代码
-    ├── src/               # 源码目录
-    │   ├── components/    # 业务 UI 组件
-    │   ├── store/         # 状态管理 (Zustand)
-    │   └── hooks/         # 自定义 React Hooks
-    └── public/            # 静态资源文件
-```
+## 🤝 参与贡献
+
+我们欢迎任何形式的贡献，包括但不限于：
+1. **反馈 Bug**：通过 GitHub Issue 提交。
+2. **提交代码**：请遵循现有的代码风格，并提交 Pull Request。
+3. **完善文档**：帮助修正错别字或增加使用技巧。
 
 ## 📄 开源协议
 本项目采用 [MIT License](LICENSE) 协议开源。
