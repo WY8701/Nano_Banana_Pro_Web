@@ -38,6 +38,11 @@ tmp/
 开发进度.md
 完整技术方案_精简融合版.md
 Tauri 桌面端软件开发方案.md
+# Tauri Binaries
+desktop/src-tauri/bin/
+backend/server
+backend/desktop/src-tauri/bin/
+assets/*.png
 *.png
 desktop/src-tauri/target/
 desktop/node_modules/
