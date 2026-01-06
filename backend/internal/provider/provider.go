@@ -47,6 +47,20 @@ func InitProviders() {
 	initMu.Lock()
 	defer initMu.Unlock()
 
+	// 0. 确保基础 Provider 至少存在于数据库中（即使没有配置文件）
+	defaultProviders := []string{"gemini"}
+	for _, name := range defaultProviders {
+		var count int64
+		model.DB.Model(&model.ProviderConfig{}).Where("provider_name = ?", name).Count(&count)
+		if count == 0 {
+			model.DB.Create(&model.ProviderConfig{
+				ProviderName: name,
+				DisplayName:  name,
+				Enabled:      true,
+			})
+		}
+	}
+
 	// 1. 将配置文件中的配置同步到数据库（如果不存在）
 	for name, cfg := range config.GlobalConfig.Providers {
 		if !cfg.Enabled {

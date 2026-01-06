@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -19,7 +22,24 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func getWorkDir() string {
+	// 如果是作为 Tauri 边车运行，使用用户目录下的应用支持目录
+	if os.Getenv("TAURI_PLATFORM") != "" || os.Getenv("TAURI_FAMILY") != "" {
+		configDir, err := os.UserConfigDir()
+		if err == nil {
+			appDir := configDir + "/com.dztool.banana"
+			_ = os.MkdirAll(appDir, 0755)
+			return appDir
+		}
+	}
+	return "."
+}
+
 func main() {
+	workDir := getWorkDir()
+	log.Printf("Working directory: %s", workDir)
+	_ = os.Chdir(workDir)
+
 	// 1. 初始化配置
 	config.InitConfig()
 
@@ -83,14 +103,36 @@ func main() {
 	// 静态资源访问 (将 storage 目录整体暴露，以匹配数据库中的 storage/local/xxx.jpg 路径)
 	r.Static("/storage", "storage")
 
-	// 6. 优雅启动与关闭
+	// 6. 端口探测与启动
+	port := 8080
+	var ln net.Listener
+	var err error
+
+	// 尝试从 8080 开始寻找可用端口
+	for i := 0; i < 100; i++ {
+		addr := ":" + strconv.Itoa(port+i)
+		ln, err = net.Listen("tcp", addr)
+		if err == nil {
+			port = port + i
+			break
+		}
+	}
+
+	if err != nil {
+		log.Fatalf("无法找到可用端口: %v", err)
+	}
+
+	// 如果是在 Tauri 边车模式下，将实际监听的端口打印到标准输出，方便前端发现
+	fmt.Printf("SERVER_PORT=%d\n", port)
+	os.Stdout.Sync() // 强制刷新标准输出，确保 Rust 能立即读到
+
 	srv := &http.Server{
-		Addr:    ":8080",
+		Addr:    ":" + strconv.Itoa(port),
 		Handler: r,
 	}
 
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("启动服务失败: %v", err)
 		}
 	}()

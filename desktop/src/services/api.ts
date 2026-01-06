@@ -2,14 +2,35 @@ import axios, { AxiosInstance } from 'axios';
 import { ApiResponse } from '../types';
 
 // 根据 API 文档，后端地址默认为 http://localhost:8080
-// 在生产环境中，这通常是相对路径 /api/v1
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+let BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
 
 // 创建 axios 实例
 const api = axios.create({
   baseURL: BASE_URL,
   timeout: 60000,
 }) as AxiosInstance;
+
+// 如果在 Tauri 环境中，监听后端实际分配的端口
+if (window.__TAURI_INTERNALS__) {
+  import('@tauri-apps/api/event').then(({ listen }) => {
+    listen<{ port: number }>('backend-port', (event) => {
+      console.log('Received new backend port:', event.payload.port);
+      const newBaseUrl = `http://127.0.0.1:${event.payload.port}/api/v1`;
+      BASE_URL = newBaseUrl;
+      api.defaults.baseURL = newBaseUrl;
+      
+      // 同时也给所有的 axios 拦截器更新基础地址（如果有缓存的话）
+      console.log('API base URL updated to:', newBaseUrl);
+    });
+  });
+}
+
+// 请求拦截器：确保在没有获取到动态端口前，如果是在 Tauri 环境下，先等待或者记录日志
+api.interceptors.request.use((config) => {
+  // 打印当前请求的完整 URL 方便调试
+  console.log(`Making request to: ${config.baseURL}${config.url}`);
+  return config;
+});
 
 // 响应拦截器
 api.interceptors.response.use(
