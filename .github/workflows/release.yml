@@ -74,7 +74,18 @@ jobs:
         with:
           projectPath: './desktop'
           tagName: ${{ github.ref_name }}
-          releaseName: '大香蕉 AI v${{ github.ref_name }}'
-          releaseBody: '自动发布的版本。'
-          releaseDraft: true
+          releaseName: '大香蕉 AI ${{ github.ref_name }}'
+          releaseBody: |
+            ## 🎨 大香蕉 AI - 创作从未如此简单
+
+            ### 🚀 本次更新
+            ${{ github.event.head_commit.message }}
+
+            ### 📦 包含组件
+            - 桌面客户端 (Tauri)
+            - 本地推理引擎 (Go Sidecar)
+
+            ---
+            *由 GitHub Actions 自动构建发布 - ${{ github.event.repository.updated_at }}*
+          releaseDraft: false
           prerelease: false
