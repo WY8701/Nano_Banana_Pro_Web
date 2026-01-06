@@ -22,6 +22,8 @@ const PanelLoader = () => (
   </div>
 );
 
+import { tauriInitPromise } from '../../services/api';
+
 export default function MainLayout() {
   const currentTab = useGenerateStore((s) => s.currentTab);
   const isSidebarOpen = useGenerateStore((s) => s.isSidebarOpen);
@@ -30,15 +32,19 @@ export default function MainLayout() {
   const status = useGenerateStore((s) => s.status);
 
   const [isHydrated, setIsHydrated] = useState(false);
+  const [isTauriReady, setIsTauriReady] = useState(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [isBackendHealthy, setIsBackendHealthy] = useState<boolean | null>(null);
 
   // 1. 确保状态恢复
-  useEffect(() => setIsHydrated(true), []);
+  useEffect(() => {
+    setIsHydrated(true);
+    tauriInitPromise.then(() => setIsTauriReady(true));
+  }, []);
 
   // 2. 检查后端健康状态
   useEffect(() => {
-    if (!isHydrated) return;
+    if (!isHydrated || !isTauriReady) return;
 
     let retryCount = 0;
     const maxRetries = 5;
@@ -75,13 +81,13 @@ export default function MainLayout() {
   // 避免“必须切到历史页才恢复”的业务闭环缺口
   const hasSyncedProcessingTaskRef = useRef(false);
   useEffect(() => {
-    if (!isHydrated) return;
+    if (!isHydrated || !isTauriReady) return;
     if (hasSyncedProcessingTaskRef.current) return;
     if (status !== 'processing' || !taskId) return;
 
     hasSyncedProcessingTaskRef.current = true;
     useHistoryStore.getState().loadHistory(true).catch(() => {});
-  }, [isHydrated, status, taskId]);
+  }, [isHydrated, isTauriReady, status, taskId]);
 
   // 任务恢复逻辑：由历史记录加载后的 syncWithGenerateStore 处理
 

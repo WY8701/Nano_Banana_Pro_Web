@@ -129,9 +129,6 @@ export function FloatingTabSwitch() {
     if (tab === 'history') {
       console.log('[FloatingTabSwitch] 切换到历史记录，触发加载');
       useHistoryStore.getState().loadHistory(true)
-        .then(() => {
-          toast.success('已同步最新历史记录');
-        })
         .catch(err => {
           console.error('Failed to reload history on tab switch:', err);
         });

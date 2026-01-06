@@ -14,6 +14,10 @@ const api = axios.create({
 let isPortDetected = false;
 // 应用数据目录，用于拼接本地图片路径
 let appDataDir: string | null = null;
+let resolveInit: (value: void | PromiseLike<void>) => void;
+export const tauriInitPromise = new Promise<void>((resolve) => {
+  resolveInit = resolve;
+});
 
 // 如果在 Tauri 环境中，主动获取端口并监听更新
 if (window.__TAURI_INTERNALS__) {
@@ -35,16 +39,23 @@ if (window.__TAURI_INTERNALS__) {
       appDataDir = await invoke<string>('get_app_data_dir');
       console.log('App Data Dir detected:', appDataDir);
 
+      // 初始化完成
+      resolveInit();
+
       // 3. 监听后续端口更新事件
       listen<{ port: number }>('backend-port', (event) => {
         updateBaseUrl(event.payload.port);
       });
     } catch (err) {
       console.error('Failed to initialize Tauri API:', err);
+      resolveInit();
     }
   };
 
   initTauri();
+} else {
+  // 非 Tauri 环境立即完成
+  setTimeout(() => resolveInit?.(), 0);
 }
 
 function updateBaseUrl(port: number) {
@@ -145,16 +156,17 @@ export const getImageUrl = (path: string) => {
       const absolutePath = `${appDataDir}${separator}${path}`;
       
       // 使用 Tauri 提供的 convertFileSrc 将绝对路径转为 asset:// 协议 URL
-      // 注意：convertFileSrc 在 v2 中位于 @tauri-apps/api/core
-      const { convertFileSrc } = window as any;
+      const convertFileSrc = (window as any).convertFileSrc;
       if (typeof convertFileSrc === 'function') {
-        return convertFileSrc(absolutePath);
+        const url = convertFileSrc(absolutePath);
+        console.log('Converted to asset URL:', url);
+        return url;
       }
       
-      // 如果 window 上没有，尝试手动拼接 (Tauri v2 默认格式)
-      // 格式通常为: https://asset.localhost/<encoded_path> 或 asset://localhost/<path>
-      // macOS 上常用 asset://localhost/
-      return `asset://localhost${absolutePath.startsWith('/') ? '' : '/'}${encodeURIComponent(absolutePath).replace(/%2F/g, '/')}`;
+      // 回退：如果 convertFileSrc 还没准备好，或者不可用，则尝试手动拼接
+      // Tauri v2 macOS 默认格式
+      const encodedPath = encodeURIComponent(absolutePath).replace(/%2F/g, '/');
+      return `asset://localhost${absolutePath.startsWith('/') ? '' : '/'}${encodedPath}`;
     } catch (err) {
       console.error('Failed to convert local path to asset URL:', err);
     }
