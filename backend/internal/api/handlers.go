@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"os"
 )
 
 // Response 统一 API 响应结构
@@ -318,4 +319,33 @@ func DeleteImageHandler(c *gin.Context) {
 	}
 
 	Success(c, "删除成功")
+}
+
+// DownloadImageHandler 下载高清原图
+func DownloadImageHandler(c *gin.Context) {
+	id := c.Param("id")
+	var task model.Task
+	if err := model.DB.Where("task_id = ?", id).First(&task).Error; err != nil {
+		Error(c, http.StatusNotFound, 404, "图片不存在")
+		return
+	}
+
+	if task.LocalPath == "" {
+		Error(c, http.StatusNotFound, 404, "本地文件路径为空")
+		return
+	}
+
+	// 检查文件是否存在
+	if _, err := os.Stat(task.LocalPath); os.IsNotExist(err) {
+		Error(c, http.StatusNotFound, 404, "本地文件不存在")
+		return
+	}
+
+	// 设置下载头
+	fileName := fmt.Sprintf("%s.jpg", task.TaskID)
+	c.Header("Content-Description", "File Transfer")
+	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
+	c.Header("Content-Type", "application/octet-stream")
+	c.File(task.LocalPath)
 }

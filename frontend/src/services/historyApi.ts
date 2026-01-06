@@ -41,7 +41,7 @@ export const exportImages = async (imageIds: string[]): Promise<Blob> => {
   const response = await api.post('/images/export', { imageIds }, { responseType: 'blob' });
   // api 拦截器在 blob 模式下会直接返回 Blob，不会解包
   // 因此这里 response 应该就是 Blob 类型
-  return response as Blob;
+  return response as unknown as Blob;
 };
 
 // 健康检查

@@ -77,6 +77,7 @@ func main() {
 		v1.GET("/tasks/:task_id", api.GetTaskHandler)
 		v1.GET("/images", api.ListImagesHandler)
 		v1.DELETE("/images/:id", api.DeleteImageHandler)
+		v1.GET("/images/:id/download", api.DownloadImageHandler)
 	}
 
 	// 静态资源访问 (将 storage 目录整体暴露，以匹配数据库中的 storage/local/xxx.jpg 路径)
