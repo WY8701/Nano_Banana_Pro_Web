@@ -14,17 +14,20 @@ export function ImageGrid({ onPreview }: ImageGridProps) {
   const images = useGenerateStore((s) => s.images);
   const selectedIds = useGenerateStore((s) => s.selectedIds);
   const toggleSelect = useGenerateStore((s) => s.toggleSelect);
-  const startTime = useGenerateStore(s => s.startTime);
-  const status = useGenerateStore(s => s.status);
 
-  // 统一的计时状态 - 所有卡片共享一个计时器
-  const [elapsedTime, setElapsedTime] = useState('0.0');
+  const isPendingImage = useCallback((img: GeneratedImage) => {
+    return img.status !== 'failed' && (img.status === 'pending' || !img.url);
+  }, []);
+
+  // 统一的计时 tick：用于驱动“生成中”卡片的独立计时（按各自 createdAt 计算）
+  const [now, setNow] = useState(() => Date.now());
   const rafRef = useRef<number | null>(null);
+  const lastUpdateRef = useRef<number>(0);
 
-  // 使用 requestAnimationFrame 优化计时更新
+  // 使用 requestAnimationFrame（+节流）驱动计时更新；避免新任务开始时重置旧任务的计时
   useEffect(() => {
-    // 只在处理中且有开始时间时启动计时
-    if (status !== 'processing' || !startTime) {
+    const hasPendingImages = images.some(isPendingImage);
+    if (!hasPendingImages) {
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
@@ -33,17 +36,14 @@ export function ImageGrid({ onPreview }: ImageGridProps) {
     }
 
     const updateTimer = () => {
-      const seconds = ((Date.now() - startTime) / 1000).toFixed(1);
-      setElapsedTime(seconds);
-
-      // 只要有正在处理的图片，继续更新
-      // 检查当前显示的图片中是否还有 pending 状态的
-      const hasPendingImages = images.some(img => img.status === 'pending');
-      if (hasPendingImages || status === 'processing') {
-        rafRef.current = requestAnimationFrame(updateTimer);
-      } else {
-        rafRef.current = null;
+      const t = Date.now();
+      // 计时显示精度到 0.1s，节流到 ~10fps，减少不必要的重渲染
+      if (t - lastUpdateRef.current >= 100) {
+        lastUpdateRef.current = t;
+        setNow(t);
       }
+
+      rafRef.current = requestAnimationFrame(updateTimer);
     };
 
     rafRef.current = requestAnimationFrame(updateTimer);
@@ -54,7 +54,7 @@ export function ImageGrid({ onPreview }: ImageGridProps) {
         rafRef.current = null;
       }
     };
-  }, [status, startTime, images]);
+  }, [images, isPendingImage]);
 
   // 限制最大显示数量，防止 DOM 爆炸
   const displayedImages = useMemo(() => {
@@ -93,7 +93,16 @@ export function ImageGrid({ onPreview }: ImageGridProps) {
             selected={selectedIds.has(img.id)}
             onSelect={toggleSelect}
             onClick={handlePreview}
-            elapsed={elapsedTime}
+            elapsed={
+              isPendingImage(img)
+                ? (() => {
+                    const startMs = Date.parse(img.createdAt || '');
+                    const safeStart = Number.isFinite(startMs) ? startMs : now;
+                    const seconds = Math.max(0, (now - safeStart) / 1000);
+                    return seconds.toFixed(1);
+                  })()
+                : undefined
+            }
           />
         ))}
       </div>

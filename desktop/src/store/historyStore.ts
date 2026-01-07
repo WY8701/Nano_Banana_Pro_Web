@@ -191,6 +191,10 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
           // 先调用删除 API
           await deleteImage(imageId);
 
+          // 同步：生成区也可能缓存了同一张图片，删除后应一并移除
+          //（generateStore.removeImage 内部会同时移除选中状态）
+          useGenerateStore.getState().removeImage(imageId);
+
           // 本地移除图片（立即更新 UI）
           set((state) => {
               const updatedItems = state.items.map(item => {
