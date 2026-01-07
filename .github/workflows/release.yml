@@ -46,15 +46,15 @@ jobs:
       - name: 获取当前时间 (北京时间)
         shell: bash
         run: |
-          # 获取 UTC 时间并转换为北京时间 (UTC+8)
-          BUILD_TIME=$(date -u -d "+8 hours" "+%Y-%m-%d %H:%M:%S")
+          # macOS runner 使用 BSD date，不支持 GNU 的 `-d` 参数；用 TZ 方式兼容 macOS/Linux
+          BUILD_TIME=$(TZ=Asia/Shanghai date "+%Y-%m-%d %H:%M:%S")
           echo "BUILD_TIME=$BUILD_TIME" >> $GITHUB_ENV
         if: runner.os != 'Windows'
 
       - name: 获取当前时间 (北京时间 - Windows)
         shell: pwsh
         run: |
-          $buildTime = (Get-Date).AddHours(0).ToString("yyyy-MM-dd HH:mm:ss")
+          $buildTime = (Get-Date).ToUniversalTime().AddHours(8).ToString("yyyy-MM-dd HH:mm:ss")
           echo "BUILD_TIME=$buildTime" >> $env:GITHUB_ENV
         if: runner.os == 'Windows'
 

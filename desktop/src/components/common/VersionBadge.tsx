@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowUpCircle, Github } from 'lucide-react';
 import { useUpdaterStore } from '../../store/updaterStore';
+import { useGenerateStore } from '../../store/generateStore';
 import { cn } from './Button';
 
 export function VersionBadge() {
@@ -32,6 +33,10 @@ export function VersionBadge() {
   }, []);
 
   const hasUpdate = status === 'available' && Boolean(update);
+
+  const currentTab = useGenerateStore((s) => s.currentTab);
+  const generateCount = useGenerateStore((s) => s.images.length);
+  const shouldLiftOnDesktop = currentTab === 'generate' && generateCount > 0;
 
   const title = useMemo(() => {
     if (hasUpdate) return `发现新版本 v${update?.version || ''}，点击查看/安装`;
@@ -65,7 +70,8 @@ export function VersionBadge() {
   return (
     <div
       className={cn(
-        'fixed right-4 bottom-24 md:bottom-4 z-[55] inline-flex items-center gap-2'
+        'fixed right-4 bottom-24 z-[55] inline-flex items-center gap-2',
+        shouldLiftOnDesktop ? 'md:bottom-24' : 'md:bottom-4'
       )}
       style={{ WebkitAppRegion: 'no-drag' } as any}
     >

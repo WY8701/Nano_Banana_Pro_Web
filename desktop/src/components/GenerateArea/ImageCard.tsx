@@ -30,6 +30,7 @@ export const ImageCard = React.memo(function ImageCard({
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [showConfirm, setShowConfirm] = React.useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
     return () => {
@@ -165,6 +166,29 @@ export const ImageCard = React.memo(function ImageCard({
     return specs.split(' · ');
   }, [specs]);
 
+  const handleDragStart = useCallback((e: React.DragEvent) => {
+    if (!isSuccess) return;
+
+    try {
+      e.dataTransfer.effectAllowed = 'copy';
+
+      const url = image.url || image.thumbnailUrl || '';
+      if (url) {
+        e.dataTransfer.setData('application/x-image-url', url);
+        e.dataTransfer.setData('text/uri-list', url);
+      }
+      if (image.filePath || image.thumbnailPath) {
+        e.dataTransfer.setData('application/x-image-path', image.filePath || image.thumbnailPath);
+      }
+      e.dataTransfer.setData('application/x-image-name', `ref-${image.id || 'unknown'}.jpg`);
+      e.dataTransfer.setData('text/plain', url || image.filePath || image.thumbnailPath || '');
+
+      if (imgRef.current) {
+        e.dataTransfer.setDragImage(imgRef.current, 40, 40);
+      }
+    } catch {}
+  }, [isSuccess, image.id, image.url, image.thumbnailUrl, image.filePath, image.thumbnailPath]);
+
   return (
     <div
       className={cn(
@@ -283,10 +307,12 @@ export const ImageCard = React.memo(function ImageCard({
         ) : isSuccess ? (
           <div className="w-full h-full relative">
             <img
+              ref={imgRef}
               src={image.thumbnailUrl || image.url}
               alt={image.prompt || '图片'}
               className="w-full h-full object-cover"
               loading="lazy"
+              onDragStart={handleDragStart}
             />
             
             {/* 渐变遮罩 - 仅在悬浮时显示更多信息 */}

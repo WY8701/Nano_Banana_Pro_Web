@@ -5,6 +5,7 @@ import { cn } from '../common/Button';
 import { toast } from '../../store/toastStore';
 import { ExtendedFile } from '../../types';
 import { calculateMd5, compressImage, fetchFileWithMd5 } from '../../utils/image';
+import { getImageUrl } from '../../services/api';
 
 export function ReferenceImageUpload() {
   const refFiles = useConfigStore((s) => s.refFiles);
@@ -336,10 +337,10 @@ export function ReferenceImageUpload() {
     e.preventDefault();
     e.stopPropagation();
     // 只在展开状态且未满时允许拖入
-    if (isExpanded && refFiles.length < 10) {
+    if (refFiles.length < 10) {
       setIsDraggingOver(true);
     }
-  }, [isExpanded, refFiles.length]);
+  }, [refFiles.length]);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -415,14 +416,59 @@ export function ReferenceImageUpload() {
     e.stopPropagation();
     setIsDraggingOver(false);
 
-    // 只在展开状态处理
-    if (!isExpanded) return;
+    // 收起状态也允许拖入：自动展开，避免“无提示/无响应”的体验
+    if (!isExpanded) {
+      setIsExpanded(true);
+    }
 
     // 并发操作保护
     try {
       await withProcessingLock(async () => {
         const filesToAdd: File[] = [];
         const remainingSlots = 10 - refFiles.length;
+
+        if (remainingSlots <= 0) {
+          toast.error('参考图已满');
+          return;
+        }
+
+        const isTauri = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
+
+        // 1) 优先处理“内部拖拽”的本地路径（Tauri 下最稳：不依赖 fetch/asset/CORS）
+        if (isTauri) {
+          const looksLikePath = (p: string) => {
+            if (!p) return false;
+            if (p.startsWith('storage/') || p.startsWith('storage\\')) return true;
+            if (p.startsWith('/') || p.startsWith('\\\\')) return true;
+            if (/^[a-zA-Z]:[\\/]/.test(p)) return true;
+            return false;
+          };
+
+          const fromCustom = (e.dataTransfer.getData('application/x-image-path') || '').trim();
+          let imagePath = fromCustom;
+          if (!imagePath) {
+            const fromPlain = (e.dataTransfer.getData('text/plain') || '').trim();
+            if (looksLikePath(fromPlain)) imagePath = fromPlain;
+          }
+
+          if (imagePath && !imagePath.includes('://')) {
+            const md5Key = `path-${imagePath}`;
+            if (fileMd5SetRef.current.has(md5Key)) {
+              toast.info('图片已存在');
+              return;
+            }
+
+            const rawName = e.dataTransfer.getData('application/x-image-name') || '';
+            const name = (rawName || '').trim() || imagePath.split(/[/\\]/).pop() || 'ref-image.jpg';
+            const file = new File([], name, { type: 'image/jpeg' }) as ExtendedFile;
+            file.__path = imagePath;
+            file.__md5 = md5Key;
+
+            addRefFiles([file]);
+            toast.success('已添加 1 张参考图');
+            return;
+          }
+        }
 
         // 调试日志
 
@@ -476,6 +522,25 @@ export function ReferenceImageUpload() {
             }
           }
 
+          // 兼容：部分 WebView/平台可能只提供 text/plain
+          if (!imageUrl) {
+            const plain = e.dataTransfer.getData('text/plain');
+            const trimmed = (plain || '').trim();
+            if (
+              trimmed &&
+              (trimmed.startsWith('http://') ||
+                trimmed.startsWith('https://') ||
+                trimmed.startsWith('asset:') ||
+                trimmed.startsWith('tauri:') ||
+                trimmed.startsWith('ipc:') ||
+                trimmed.startsWith('blob:') ||
+                trimmed.startsWith('data:') ||
+                trimmed.startsWith('http://asset.localhost'))
+            ) {
+              imageUrl = trimmed;
+              if (!imageName) imageName = 'ref-image.jpg';
+            }
+          }
 
           if (imageUrl && imageName) {
             if (validatedFiles.length + rawFiles.length >= remainingSlots) {
@@ -532,6 +597,7 @@ export function ReferenceImageUpload() {
             toast.info('图片已存在');
           }
         } else {
+          toast.error('未检测到可添加的图片');
         }
       });
     } catch (error) {
@@ -700,11 +766,9 @@ export function ReferenceImageUpload() {
                         let url: string;
                         const extFile = file as ExtendedFile;
                         if (extFile.__path) {
-                           // 如果有本地路径，直接使用 asset 协议
-                           const { convertFileSrc } = window as any;
-                           url = typeof convertFileSrc === 'function' 
-                             ? convertFileSrc(extFile.__path)
-                             : URL.createObjectURL(file);
+                           // 如果有本地路径，优先使用 getImageUrl 统一处理（兼容 asset:// 与 http 回退）
+                           url = getImageUrl(extFile.__path);
+                           if (!url) url = URL.createObjectURL(file);
                         } else {
                            url = URL.createObjectURL(file);
                         }

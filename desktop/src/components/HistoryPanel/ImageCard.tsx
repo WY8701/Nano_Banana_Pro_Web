@@ -111,7 +111,13 @@ export const ImageCard = React.memo(function ImageCard({ image, onClick }: Image
           e.dataTransfer.setData('application/x-image-url', image.url);
           e.dataTransfer.setData('text/uri-list', image.url); // 备用：标准MIME类型
         }
+        // Tauri 内部拖拽：传递本地路径（优先 filePath，其次 thumbnailPath）
+        if (image.filePath || image.thumbnailPath) {
+          e.dataTransfer.setData('application/x-image-path', image.filePath || image.thumbnailPath);
+        }
         e.dataTransfer.setData('application/x-image-name', `ref-${image.id || 'unknown'}.jpg`);
+        // 兼容：部分 WebView 读取自定义类型不稳定，补一份 text/plain
+        e.dataTransfer.setData('text/plain', image.url || image.filePath || image.thumbnailPath || '');
 
         // 设置拖拽图像为当前图片
         if (imgRef.current) {
@@ -147,7 +153,7 @@ export const ImageCard = React.memo(function ImageCard({ image, onClick }: Image
                 // 忽略错误
             }
         }
-    }, [image.url, image.id]);
+    }, [image.url, image.filePath, image.thumbnailPath, image.id]);
 
     // 拖拽结束处理 - 延迟清理缓存
     const handleDragEnd = useCallback(() => {
@@ -254,7 +260,6 @@ export const ImageCard = React.memo(function ImageCard({ image, onClick }: Image
                     alt={image.prompt}
                     className="w-full h-full object-cover"
                     loading="lazy"
-                    draggable={false}
                 />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none" />
             </div>
