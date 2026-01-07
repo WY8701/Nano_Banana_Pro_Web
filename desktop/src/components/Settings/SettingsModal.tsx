@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, EyeOff, Key, Globe, Box, Save, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Key, Globe, Box, Save, Loader2, FileText, FolderOpen, Copy, RefreshCw } from 'lucide-react';
 import { useConfigStore } from '../../store/configStore';
 import { Input } from '../common/Input';
 import { Select } from '../common/Select';
@@ -7,6 +7,8 @@ import { Button } from '../common/Button';
 import { Modal } from '../common/Modal';
 import { getProviders, updateProviderConfig, ProviderConfig } from '../../services/providerApi';
 import { toast } from '../../store/toastStore';
+import { getDiagnosticVerbose, setDiagnosticVerbose } from '../../utils/diagnosticLogger';
+import { useUpdaterStore } from '../../store/updaterStore';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -25,6 +27,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [loading, setLoading] = useState(false);
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [fetching, setFetching] = useState(false);
+  const [verboseLogs, setVerboseLogs] = useState(getDiagnosticVerbose());
+  const checkForUpdates = useUpdaterStore((s) => s.checkForUpdates);
 
   // 当弹窗打开时，从后端获取最新的配置
   useEffect(() => {
@@ -86,6 +90,83 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setApiBaseUrl(config.api_base);
       setApiKey(config.api_key);
     }
+  };
+
+  const getLogDir = async () => {
+    const isTauri = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
+    if (!isTauri) return '';
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<string>('get_log_dir');
+  };
+
+  const copyText = async (text: string) => {
+    if (!text) return false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {}
+
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleOpenLogDir = async () => {
+    try {
+      const dir = await getLogDir();
+      if (!dir) {
+        toast.info('日志目录仅在桌面端可用');
+        return;
+      }
+      const { openPath } = await import('@tauri-apps/plugin-opener');
+      await openPath(dir);
+    } catch (err) {
+      console.error('打开日志目录失败:', err);
+      toast.error('打开日志目录失败');
+    }
+  };
+
+  const handleCopyLogDir = async () => {
+    try {
+      const dir = await getLogDir();
+      if (!dir) {
+        toast.info('日志目录仅在桌面端可用');
+        return;
+      }
+      const ok = await copyText(dir);
+      if (ok) toast.success('日志路径已复制');
+      else toast.error('复制失败，请手动打开日志目录');
+    } catch (err) {
+      console.error('复制日志路径失败:', err);
+      toast.error('复制日志路径失败');
+    }
+  };
+
+  const handleToggleVerboseLogs = (next: boolean) => {
+    setVerboseLogs(next);
+    setDiagnosticVerbose(next);
+    toast.success(next ? '已启用详细日志' : '已关闭详细日志');
+  };
+
+  const handleCheckUpdates = async () => {
+    // 避免“设置弹窗 + 更新弹窗”双层体验：先关闭设置，再触发更新检查
+    onClose();
+    setTimeout(() => {
+      checkForUpdates({ silent: false, openIfAvailable: true }).catch(() => {});
+    }, 120);
   };
 
   return (
@@ -169,6 +250,66 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             onChange={(e) => setModel(e.target.value)}
             className="h-12 bg-slate-100 text-slate-900 font-medium rounded-2xl text-sm px-5 focus:bg-white border border-slate-200 transition-all shadow-none"
           />
+        </div>
+
+        {/* Updater */}
+        <div className="space-y-3">
+          <label className="text-[13px] font-bold text-slate-700 uppercase tracking-wide flex items-center gap-2 px-1">
+            <RefreshCw className="w-4 h-4 text-blue-600" />
+            软件更新
+          </label>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleCheckUpdates}
+            className="w-full h-12 rounded-2xl"
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            检查更新
+          </Button>
+          <p className="text-xs text-slate-500 leading-relaxed px-1">
+            开启应用会自动检查更新；如有新版本会弹窗提示，一键下载安装。
+          </p>
+        </div>
+
+        {/* Diagnostic Logs */}
+        <div className="space-y-3">
+          <label className="text-[13px] font-bold text-slate-700 uppercase tracking-wide flex items-center gap-2 px-1">
+            <FileText className="w-4 h-4 text-blue-600" />
+            诊断日志
+          </label>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleOpenLogDir}
+              className="flex-1 h-12 rounded-2xl"
+            >
+              <FolderOpen className="w-4 h-4 mr-2" />
+              打开日志目录
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleCopyLogDir}
+              className="h-12 rounded-2xl"
+              title="复制日志目录路径"
+            >
+              <Copy className="w-4 h-4" />
+            </Button>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-600 select-none">
+            <input
+              type="checkbox"
+              checked={verboseLogs}
+              onChange={(e) => handleToggleVerboseLogs(e.target.checked)}
+              className="accent-blue-600"
+            />
+            <span>启用详细日志（记录更多调试信息）</span>
+          </label>
+          <p className="text-xs text-slate-500 leading-relaxed px-1">
+            遇到问题时，请将 <span className="font-mono">app.log</span> 和 <span className="font-mono">server.log</span> 提交给开发者（注意日志可能包含提示词等信息）。
+          </p>
         </div>
 
         <div className="pt-4">

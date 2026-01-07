@@ -19,6 +19,8 @@ export const mapBackendTaskToFrontend = (task: any): GenerationTask => {
     height: task.height || 0,
     createdAt: task.created_at,
     prompt: task.prompt,
+    // 生成弹窗需要展示模型：对齐历史记录的 task.model 显示逻辑
+    model: task.model_id || task.provider_name,
     status: task.status === 'completed' ? 'success' : (task.status === 'failed' ? 'failed' : 'pending'),
     // 弹窗预览使用原图
     url: getFullUrl(task.local_path || task.image_url || task.thumbnail_path || task.thumbnail_url),

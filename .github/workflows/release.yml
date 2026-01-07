@@ -27,6 +27,11 @@ jobs:
             platform: windows-latest
             tauriArgs: '--bundles nsis'
     runs-on: ${{ matrix.platform }}
+    env:
+      # Tauri Updater 签名密钥（用于生成 *.sig 与 latest.json）
+      # 需要在仓库 Secrets 中配置：TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD（可为空）
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
     steps:
       - name: 拉取源代码

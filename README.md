@@ -152,6 +152,42 @@ git tag v0.1.3
 git push origin v0.1.3
 ```
 
+### 5. 自动更新 (Updater)
+项目已集成 Tauri 官方 Updater 插件，发布新版本后用户启动应用会收到更新提示，可一键下载安装。
+
+1) 生成 Updater 签名密钥（仅需一次，务必妥善保存私钥）
+```bash
+cd desktop
+npm run tauri signer generate -- -w ~/.tauri/banana-updater.key
+```
+
+2) 将公钥写入配置：`desktop/src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`（公钥内容来自 `~/.tauri/banana-updater.key.pub`）
+
+示例（只填入 `.pub` 文件里的 key 内容，不要把私钥提交到仓库）：
+```json
+{
+  "plugins": {
+    "updater": {
+      "pubkey": "YOUR_PUBLIC_KEY_HERE"
+    }
+  }
+}
+```
+
+3) 配置 GitHub Secrets（用于 CI 生成 `*.sig` 与 `latest.json`）
+
+GitHub Secrets 指的是 GitHub 仓库页面里的 Actions Secrets：`Repo -> Settings -> Secrets and variables -> Actions -> New repository secret`
+
+- `TAURI_SIGNING_PRIVATE_KEY`: 私钥文件内容（`~/.tauri/banana-updater.key` 的全文内容，不是文件路径；不要提交到仓库）
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: 私钥密码（如生成时设置了密码，否则可不配置）
+
+本地取私钥内容（示例）：
+```bash
+cat ~/.tauri/banana-updater.key
+```
+
+4) 触发发布后，Release Assets 中应包含 `latest.json`、对应平台安装包，以及同名的 `*.sig` 文件。
+
 ---
 
 ## ⚙️ 核心配置

@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight, SlidersHorizontal, X, AlertTriangle, Loader2
 import { useHistoryStore } from '../../store/historyStore';
 import api from '../../services/api';
 import { toast } from '../../store/toastStore';
+import { VersionBadge } from '../common/VersionBadge';
 
 // 使用懒加载减少初始包体积
 const ConfigPanel = lazy(() => import('../ConfigPanel'));
@@ -198,6 +199,8 @@ export default function MainLayout() {
           </div>
         </section>
       </main>
+
+      <VersionBadge />
     </div>
   );
 }

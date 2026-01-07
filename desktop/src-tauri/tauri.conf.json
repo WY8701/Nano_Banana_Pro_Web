@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "大香蕉 AI",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "identifier": "com.dztool.banana",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -36,6 +36,7 @@
   "bundle": {
       "active": true,
       "targets": "all",
+      "createUpdaterArtifacts": true,
       "macOS": {
         "entitlements": "Entitlements.plist"
       },
@@ -49,5 +50,16 @@
     "externalBin": [
       "bin/server"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQyNTY2RTE0QzU2RUQxMjEKUldRaDBXN0ZGRzVXMG81Vk42TWlNZXp4V05GN0dBazhNQWE1dzJIVlR2TGUvelpBTVJ1T1luZm0K",
+      "endpoints": [
+        "https://github.com/ShellMonster/Nano_Banana_Pro_Web/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

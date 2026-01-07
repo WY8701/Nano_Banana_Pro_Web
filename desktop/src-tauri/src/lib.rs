@@ -2,6 +2,10 @@ use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandEvent;
 use tauri::{Emitter, State, Manager};
 use std::sync::{Arc, Mutex};
+use std::path::{Path, PathBuf};
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, serde::Serialize)]
 struct PortPayload {
@@ -9,6 +13,157 @@ struct PortPayload {
 }
 
 struct BackendPort(Arc<Mutex<u16>>);
+
+#[derive(Clone)]
+struct LogWriter {
+    path: PathBuf,
+    file: Arc<Mutex<Option<std::fs::File>>>,
+}
+
+impl LogWriter {
+    fn new(path: PathBuf) -> Self {
+        let file = Arc::new(Mutex::new(None));
+        Self { path, file }
+    }
+
+    fn open(&self) {
+        let mut guard = self.file.lock().unwrap();
+        if guard.is_some() {
+            return;
+        }
+        if let Some(parent) = self.path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = rotate_if_too_large(&self.path, 5 * 1024 * 1024, 5);
+        match OpenOptions::new().create(true).append(true).open(&self.path) {
+            Ok(f) => {
+                *guard = Some(f);
+            }
+            Err(_) => {
+                *guard = None;
+            }
+        }
+    }
+
+    fn write_line(&self, line: &str) {
+        // lazy open
+        if self.file.lock().unwrap().is_none() {
+            self.open();
+        }
+
+        let mut guard = self.file.lock().unwrap();
+        let Some(f) = guard.as_mut() else { return };
+        let sanitized = line.replace('\r', "").trim_end_matches('\n').to_string();
+        if sanitized.is_empty() {
+            return;
+        }
+        let _ = writeln!(f, "{}", sanitized);
+        let _ = f.flush();
+    }
+}
+
+#[derive(Clone)]
+struct LogState {
+    dir: PathBuf,
+    app: LogWriter,
+    server: LogWriter,
+}
+
+impl LogState {
+    fn init(app: &tauri::AppHandle) -> Self {
+        let base = app
+            .path()
+            .app_data_dir()
+            .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let dir = base.join("logs");
+        let app_log = LogWriter::new(dir.join("app.log"));
+        let server_log = LogWriter::new(dir.join("server.log"));
+
+        app_log.open();
+        server_log.open();
+
+        let header = format!(
+            "[{}] [INFO] session start name={} version={} os={} arch={}",
+            now_ms(),
+            app.package_info().name,
+            app.package_info().version,
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        );
+        app_log.write_line(&header);
+
+        Self { dir, app: app_log, server: server_log }
+    }
+
+    fn log_app(&self, level: &str, message: &str) {
+        let line = format!("[{}] [{}] {}", now_ms(), level, message);
+        self.app.write_line(&line);
+    }
+
+    fn log_server(&self, stream: &str, message: &str) {
+        let line = format!("[{}] [{}] {}", now_ms(), stream, message);
+        self.server.write_line(&line);
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct FrontendLogEntry {
+    level: String,
+    message: String,
+    context: Option<String>,
+}
+
+fn now_ms() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+}
+
+fn rotate_if_too_large(path: &Path, max_bytes: u64, keep: usize) -> std::io::Result<()> {
+    let Ok(meta) = fs::metadata(path) else { return Ok(()) };
+    if meta.len() <= max_bytes {
+        return Ok(());
+    }
+
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("log");
+    let ts = now_ms();
+    let rotated = parent.join(format!("{}-{}.log", stem, ts));
+    let _ = fs::rename(path, rotated);
+
+    // cleanup old rotated logs
+    let mut rotated_files: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
+    if let Ok(entries) = fs::read_dir(parent) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if !p.is_file() {
+                continue;
+            }
+            let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            if !name.starts_with(&format!("{}-", stem)) || !name.ends_with(".log") {
+                continue;
+            }
+            if let Ok(m) = entry.metadata() {
+                if let Ok(modified) = m.modified() {
+                    rotated_files.push((modified, p));
+                }
+            }
+        }
+    }
+    rotated_files.sort_by_key(|(t, _)| *t);
+    if rotated_files.len() > keep {
+        let extra = rotated_files.len() - keep;
+        for (_, p) in rotated_files.into_iter().take(extra) {
+            let _ = fs::remove_file(p);
+        }
+    }
+
+    Ok(())
+}
 
 // 获取后端实际运行端口的命令
 #[tauri::command]
@@ -23,6 +178,41 @@ fn get_app_data_dir(app: tauri::AppHandle) -> String {
     app.path().app_data_dir()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default()
+}
+
+// 获取日志目录，便于用户导出/提交诊断日志
+#[tauri::command]
+fn get_log_dir(state: State<'_, LogState>) -> String {
+    state.dir.to_string_lossy().to_string()
+}
+
+// 写入前端日志（批量），用于捕获前端异常与关键调试信息
+#[tauri::command]
+fn write_frontend_logs(state: State<'_, LogState>, entries: Vec<FrontendLogEntry>) -> Result<(), String> {
+    // 防御：避免日志被塞入超大 payload
+    const MAX_ENTRIES: usize = 200;
+    const MAX_LINE_CHARS: usize = 4000;
+
+    for entry in entries.into_iter().take(MAX_ENTRIES) {
+        let level = entry.level.trim().to_uppercase();
+        let mut msg = entry.message.replace('\r', "").replace('\n', "\\n");
+        if msg.len() > MAX_LINE_CHARS {
+            msg.truncate(MAX_LINE_CHARS);
+            msg.push_str("…(truncated)");
+        }
+
+        let ctx = entry.context.unwrap_or_default().replace('\r', "").replace('\n', "\\n");
+        let mut line = format!("[{}] [FE] [{}] {}", now_ms(), level, msg);
+        if !ctx.trim().is_empty() {
+            if line.len() + ctx.len() + 4 <= MAX_LINE_CHARS {
+                line.push_str(" | ");
+                line.push_str(ctx.trim());
+            }
+        }
+
+        state.app.write_line(&line);
+    }
+    Ok(())
 }
 
 // 将本地图片写入系统剪贴板（用于 macOS 打包环境下 Web Clipboard API 不可用/不稳定的兜底）
@@ -118,8 +308,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(BackendPort(port_state_for_state))
         .setup(move |app| {
+            let log_state = LogState::init(&app.handle());
+            app.manage(log_state.clone());
+
             let shell = app.shell();
             let sidecar_command = shell.sidecar("server")
                 .unwrap()
@@ -129,18 +324,21 @@ pub fn run() {
                 .env("GIN_MODE", "release");
             
             println!("Attempting to spawn sidecar...");
+            log_state.log_app("INFO", "Attempting to spawn sidecar...");
             
             let (mut rx, child) = sidecar_command
                 .spawn()
                 .expect("Failed to spawn sidecar");
 
             println!("Sidecar spawned with PID: {:?}", child.pid());
+            log_state.log_app("INFO", &format!("Sidecar spawned with PID: {:?}", child.pid()));
 
             let child_for_exit = Arc::new(Mutex::new(Some(child)));
             let child_clone = child_for_exit.clone();
 
             let app_handle = app.handle().clone();
             let port_state_inner = port_state_for_setup.clone();
+            let log_state_for_task = log_state.clone();
             
             tauri::async_runtime::spawn(async move {
                 while let Some(event) = rx.recv().await {
@@ -148,11 +346,13 @@ pub fn run() {
                         CommandEvent::Stdout(line) => {
                             let out = String::from_utf8_lossy(&line);
                             println!("Sidecar STDOUT: {}", out);
+                            log_state_for_task.log_server("STDOUT", out.trim_end());
                             
                             if out.contains("SERVER_PORT=") {
                                 if let Some(port_str) = out.split('=').last() {
                                     if let Ok(port) = port_str.trim().parse::<u16>() {
                                         println!("Detected backend port: {}", port);
+                                        log_state_for_task.log_app("INFO", &format!("Detected backend port: {}", port));
                                         if let Ok(mut p) = port_state_inner.lock() {
                                             *p = port;
                                         }
@@ -163,13 +363,17 @@ pub fn run() {
                             }
                         }
                         CommandEvent::Stderr(line) => {
-                            eprintln!("Sidecar STDERR: {}", String::from_utf8_lossy(&line));
+                            let err = String::from_utf8_lossy(&line);
+                            eprintln!("Sidecar STDERR: {}", err);
+                            log_state_for_task.log_server("STDERR", err.trim_end());
                         }
                         CommandEvent::Error(err) => {
                             eprintln!("Sidecar Error: {}", err);
+                            log_state_for_task.log_app("ERROR", &format!("Sidecar Error: {}", err));
                         }
                         CommandEvent::Terminated(status) => {
                             println!("Sidecar Terminated with status: {:?}", status);
+                            log_state_for_task.log_app("WARN", &format!("Sidecar Terminated with status: {:?}", status));
                             // 进程退出了，清空 handle
                             if let Ok(mut c) = child_clone.lock() {
                                 *c = None;
@@ -186,6 +390,8 @@ pub fn run() {
             greet,
             get_backend_port,
             get_app_data_dir,
+            get_log_dir,
+            write_frontend_logs,
             copy_image_to_clipboard
         ])
         .run(tauri::generate_context!())
