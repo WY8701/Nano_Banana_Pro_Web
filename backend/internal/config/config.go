@@ -36,10 +36,6 @@ type Config struct {
 		OptimizeSystemJSON  string `mapstructure:"optimize_system_json"`
 		ImageToPromptSystem string `mapstructure:"image_to_prompt_system"`
 	} `mapstructure:"prompts"`
-	Templates struct {
-		RemoteURL           string `mapstructure:"remote_url"`
-		FetchTimeoutSeconds int    `mapstructure:"fetch_timeout_seconds"`
-	} `mapstructure:"templates"`
 }
 
 var GlobalConfig Config
@@ -223,8 +219,6 @@ func InitConfig() {
 	viper.SetDefault("prompts.optimize_system", DefaultOptimizeSystemPrompt)
 	viper.SetDefault("prompts.optimize_system_json", DefaultOptimizeSystemJSONPrompt)
 	viper.SetDefault("prompts.image_to_prompt_system", DefaultImageToPromptSystem)
-	viper.SetDefault("templates.remote_url", "https://raw.githubusercontent.com/ShellMonster/Nano_Banana_Pro_Web/refs/heads/main/backend/internal/templates/assets/templates.json")
-	viper.SetDefault("templates.fetch_timeout_seconds", 4)
 
 	// 支持环境变量
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))

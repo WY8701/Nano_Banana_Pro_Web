@@ -19,7 +19,6 @@ import (
 	"image-gen-service/internal/model"
 	"image-gen-service/internal/provider"
 	"image-gen-service/internal/storage"
-	"image-gen-service/internal/templates"
 	"image-gen-service/internal/worker"
 
 	"github.com/gin-gonic/gin"
@@ -117,13 +116,6 @@ func main() {
 	}
 	storage.InitStorage(config.GlobalConfig.Storage.LocalDir, ossConfig)
 
-	// 3.5 初始化模板市场
-	templates.InitStore(templates.Options{
-		RemoteURL: config.GlobalConfig.Templates.RemoteURL,
-		CachePath: filepath.Join(workDir, "templates_cache.json"),
-		Timeout:   time.Duration(config.GlobalConfig.Templates.FetchTimeoutSeconds) * time.Second,
-	})
-
 	// 4. 初始化 Worker 池 (2C2G 服务器，推荐 6 个 worker)
 	worker.InitPool(6, 100)
 	worker.Pool.Start()
@@ -161,8 +153,6 @@ func main() {
 		v1.GET("/health", func(c *gin.Context) {
 			api.Success(c, gin.H{"status": "ok", "message": "ok"})
 		})
-		v1.GET("/templates", api.ListTemplatesHandler)
-		v1.GET("/template-image", api.TemplateImageProxyHandler)
 		v1.GET("/providers", api.ListProvidersHandler)
 		v1.GET("/providers/config", api.ListProviderConfigsHandler)
 		v1.POST("/providers/config", api.UpdateProviderConfigHandler)
