@@ -8,7 +8,6 @@ import HistoryPanel from '../HistoryPanel';
 import { useGenerateStore } from '../../store/generateStore';
 import { ChevronLeft, ChevronRight, SlidersHorizontal, X } from 'lucide-react';
 import { useHistoryStore } from '../../store/historyStore';
-import { TemplateMarketDrawer } from '../TemplateMarket/TemplateMarketDrawer';
 
 export default function MainLayout() {
   const { t } = useTranslation();
@@ -25,7 +24,6 @@ export default function MainLayout() {
 
   const [isHydrated, setIsHydrated] = useState(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
-  const [isTemplateMarketOpen, setIsTemplateMarketOpen] = useState(false);
   const safeTab = currentTab === 'history' ? 'history' : 'generate';
   const lastTaskIdRef = useRef<string | null>(null);
 
@@ -137,11 +135,10 @@ export default function MainLayout() {
         )}
 
         {/* 桌面端：右侧悬浮 Tab 切换 */}
-        {!isTemplateMarketOpen && <FloatingTabSwitch />}
+        <FloatingTabSwitch />
 
         {/* 右侧主内容区域 */}
         <section className="flex-1 bg-white md:bg-white/70 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-sm border border-white/40 overflow-hidden relative">
-          <TemplateMarketDrawer onOpenChange={setIsTemplateMarketOpen} />
           <div className={`absolute inset-0 transition-opacity duration-500 ${safeTab === 'generate' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
              <GenerateArea />
           </div>

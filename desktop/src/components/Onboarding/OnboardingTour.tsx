@@ -154,13 +154,6 @@ export function OnboardingTour({ onReady }: OnboardingTourProps) {
       spotlightPadding: 4,
     },
     {
-      target: '[data-onboarding="template-market"]',
-      placement: 'bottom',
-      title: t('onboarding.templateMarket.title'),
-      content: t('onboarding.templateMarket.content'),
-      spotlightPadding: 4,
-    },
-    {
       target: '[data-onboarding="generate-button"]',
       placement: 'left',
       title: t('onboarding.generate.title'),
